@@ -83,7 +83,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("❌ استخدم الأمر هكذا: /ban user_id")
 
-# إعداد البوت وتشغيله ✅
+# ⚡ الإصلاح الأساسي: تعيين التطبيق بالـ '='
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
