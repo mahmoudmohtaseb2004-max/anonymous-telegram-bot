@@ -57,7 +57,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ الرسالة بشكل صحيح مع غلق الاقتباس
+    # حفظ الرسالة بشكل صحيح
     cursor.execute(
         "INSERT INTO messages (user_id, text, date) VALUES (?, ?, ?)",
         (user_id, text, now)
@@ -83,8 +83,9 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("❌ استخدم الأمر هكذا: /ban user_id")
 
-# إعداد البوت وتشغيله
+# إعداد البوت وتشغيله ✅
 app = ApplicationBuilder().token(TOKEN).build()
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ban", ban))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
