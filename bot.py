@@ -54,7 +54,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• صور 📸\n"
         "• فويسات 🎤\n"
         "• فيديوهات 🎥\n"
-        "• ملفات 📎"
+        "• ملفات 📎\n"
+        "• ملصقات 🎭"
     )
 
 # التعامل مع الرسائل من الخاص
@@ -124,6 +125,13 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         caption = update.message.caption or ""
         media_text = f"[ملف: {document.file_name}] {caption}"
         
+    elif update.message.sticker:
+        sticker = update.message.sticker
+        file_id = sticker.file_id
+        file_type = "sticker"
+        caption = None
+        media_text = "[ملصق]"
+        
     else:
         await update.message.reply_text("❌ نوع الرسالة غير مدعوم.")
         return
@@ -181,6 +189,12 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
             document=file_id,
             caption=group_caption
         )
+        
+    elif file_type == "sticker":
+        sent_message = await context.bot.send_sticker(
+            chat_id=ADMIN_GROUP_ID,
+            sticker=file_id
+        )
     
     cursor.execute(
         "UPDATE messages SET group_message_id = ? WHERE id = ?",
@@ -188,7 +202,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     )
     conn.commit()
     
-    # ✅ إرسال للمالك (فقط يوزر + الرسالة بدون كلام زيادة)
+    # إرسال للمالك (فقط يوزر + الرسالة بدون كلام زيادة)
     sender_name = f"@{username}" if username else first_name
     owner_msg = f"{sender_name}\n{media_text}"
     await context.bot.send_message(chat_id=OWNER_ID, text=owner_msg)
@@ -224,9 +238,11 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
                 document=file_id,
                 caption=f"{sender_name}"
             )
-
-    # ❌ حذف رسالة "تم إرسال رسالتك بنجاح"
-    # لا يوجد رد للمرسل
+        elif file_type == "sticker":
+            await context.bot.send_sticker(
+                chat_id=OWNER_ID,
+                sticker=file_id
+            )
 
 # التعامل مع الردود من المجموعة
 async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -263,7 +279,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_msg = f"📨 رد من الإدارة:\n\n{update.message.text}"
             await context.bot.send_message(chat_id=user_id, text=reply_msg)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             owner_reply_msg = f"{admin_display}\n{update.message.text}"
             await context.bot.send_message(chat_id=OWNER_ID, text=owner_reply_msg)
             
@@ -275,7 +291,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_photo(chat_id=user_id, photo=photo.file_id, caption=caption)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             await context.bot.send_photo(
                 chat_id=OWNER_ID,
                 photo=photo.file_id,
@@ -288,7 +304,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             caption = "🎤 رد من الإدارة بصوت"
             await context.bot.send_voice(chat_id=user_id, voice=voice.file_id, caption=caption)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             await context.bot.send_voice(
                 chat_id=OWNER_ID,
                 voice=voice.file_id,
@@ -303,7 +319,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_video(chat_id=user_id, video=video.file_id, caption=caption)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             await context.bot.send_video(
                 chat_id=OWNER_ID,
                 video=video.file_id,
@@ -318,7 +334,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_document(chat_id=user_id, document=document.file_id, caption=caption)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             await context.bot.send_document(
                 chat_id=OWNER_ID,
                 document=document.file_id,
@@ -333,7 +349,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_audio(chat_id=user_id, audio=audio.file_id, caption=caption)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             await context.bot.send_audio(
                 chat_id=OWNER_ID,
                 audio=audio.file_id,
@@ -345,18 +361,13 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             sticker = update.message.sticker
             await context.bot.send_sticker(chat_id=user_id, sticker=sticker.file_id)
             
-            # ✅ إرسال الرد للاونر
+            # إرسال الرد للاونر
             await context.bot.send_sticker(chat_id=OWNER_ID, sticker=sticker.file_id)
-            
-            # ❌ حذف رسالة التأكيد للمشرف
             return
             
         else:
             await update.message.reply_text("❌ نوع الرد غير مدعوم")
             return
-        
-        # ❌ حذف رسالة "تم إرسال ردك للمستخدم"
-        # لا يوجد رد للمشرف
         
     except Exception as e:
         await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
@@ -419,7 +430,7 @@ app.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_pr
 
 # تشغيل البوت
 if __name__ == "__main__":
-    print("✅ البوت يعمل مع جميع التعديلات...")
+    print("✅ البوت يعمل مع دعم الستيكرات...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
