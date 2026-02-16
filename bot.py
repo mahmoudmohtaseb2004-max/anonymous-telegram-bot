@@ -406,4 +406,105 @@ if __name__ == "__main__":
     print("✅ البوت يعمل مع دعم الوسائط والردود المتعددة...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     print(f"👑 معرف المالك: {OWNER_ID}")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)er_id, sticker=sticker.file_id)
+            await update.message.reply_text("✅ تم إرسال الملصق للمستخدم")
+            return
+            
+        else:
+            await update.message.reply_text("❌ نوع الرد غير مدعوم")
+            return
+        
+        # تأكيد للمشرف
+        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
+        
+        # إشعار للمالك (اختياري)
+        sender_name = update.message.from_user.username or update.message.from_user.first_name
+        await context.bot.send_message(
+            chat_id=OWNER_ID, 
+            text=f"✅ {sender_name} رد على المستخدم {user_id}"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
+
+# أمر حظر المستخدم
+async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
+        return
+    
+    try:
+        user_id = int(context.args[0])
+        cursor.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (user_id,))
+        conn.commit()
+        await update.message.reply_text(f"🚫 تم حظر المستخدم {user_id}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("❌ استخدم الأمر هكذا: /ban user_id")
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
+
+# أمر إلغاء حظر المستخدم
+async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
+        return
+    
+    try:
+        user_id = int(context.args[0])
+        cursor.execute("UPDATE users SET banned = 0 WHERE user_id = ?", (user_id,))
+        conn.commit()
+        await update.message.reply_text(f"✅ تم إلغاء حظر المستخدم {user_id}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("❌ استخدم الأمر هكذا: /unban user_id")
+
+# أمر إحصائيات
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
+        return
+    
+    cursor.execute("SELECT COUNT(*) FROM users")
+    users_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM messages")
+    msgs_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM users WHERE banned = 1")
+    banned_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT file_type, COUNT(*) FROM messages GROUP BY file_type")
+    media_stats = cursor.fetchall()
+    
+    photo_count = sum(1 for t, c in media_stats if t == 'photo')
+    voice_count = sum(1 for t, c in media_stats if t == 'voice')
+    video_count = sum(1 for t, c in media_stats if t == 'video')
+    audio_count = sum(1 for t, c in media_stats if t == 'audio')
+    doc_count = sum(1 for t, c in media_stats if t == 'document')
+    
+    stats_msg = (
+        f"📊 إحصائيات البوت:\n\n"
+        f"👥 المستخدمين: {users_count}\n"
+        f"📨 إجمالي الرسائل: {msgs_count}\n"
+        f"📸 صور: {photo_count}\n"
+        f"🎤 فويسات: {voice_count}\n"
+        f"🎥 فيديوهات: {video_count}\n"
+        f"🎵 ملفات صوتية: {audio_count}\n"
+        f"📎 ملفات: {doc_count}\n"
+        f"🚫 المحظورين: {banned_count}"
+    )
+    await update.message.reply_text(stats_msg)
+
+# بناء التطبيق
+app = Application.builder().token(TOKEN).build()
+
+# إضافة المعالجات
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("ban", ban))
+app.add_handler(CommandHandler("unban", unban))
+app.add_handler(CommandHandler("stats", stats))
+app.add_handler(MessageHandler(filters.ALL & filters.Chat(ADMIN_GROUP_ID) & filters.REPLY, handle_group_reply))
+app.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_private_message))
+
+# تشغيل البوت
+if __name__ == "__main__":
+    print("✅ البوت يعمل مع دعم الوسائط والردود المتعددة...")
+    print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
+    print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)ing(allowed_updates=Update.ALL_TYPES)
