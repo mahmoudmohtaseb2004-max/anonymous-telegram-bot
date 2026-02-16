@@ -8,6 +8,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # المتغيرات السرية من Railway
 TOKEN = os.getenv("TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
+# 👇 معرفك الشخصي (بدون سالب)
+OWNER_ID = 6888898698  # معرفك الشخصي
 
 # تهيئة السجلات
 logging.basicConfig(level=logging.INFO)
@@ -40,9 +42,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # التعامل مع الرسائل المجهولة - بس من الخاص
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ✅ الحل النهائي: فقط الرسائل الخاصة هي اللي تمر
+    # فقط الرسائل الخاصة
     if update.message.chat.type != "private":
-        return  # أي رسالة من مجموعة (بما فيها مجموعة المشرفين) يتم تجاهلها تماماً
+        return
 
     user_id = update.message.from_user.id
     text = update.message.text
@@ -68,17 +70,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     conn.commit()
 
-    # إرسال الرسالة لمجموعة المشرفين فقط
-    msg = f"📩 رسالة جديدة مجهولة\n\n{text}\n\n🕒 {now}"
-    await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=msg)
+    # ✅ رسالة للمجموعة (مجهولة)
+    group_msg = f"📩 رسالة جديدة مجهولة\n\n{text}\n\n🕒 {now}"
+    await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=group_msg)
+    
+    # ✅ رسالة للمالك (مع user_id) - تروح لخاصك
+    owner_msg = f"📩 رسالة جديدة\n👤 user_id: {user_id}\n💬 {text}\n🕒 {now}"
+    await context.bot.send_message(chat_id=OWNER_ID, text=owner_msg)
 
-    # الرد على المرسل في الخاص
+    # الرد على المرسل
     await update.message.reply_text("✅ تم إرسال رسالتك بنجاح.")
 
-# أمر حظر المستخدم (خاص بالمشرفين في مجموعة المشرفين)
+# أمر حظر المستخدم (للمشرفين والمالك)
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # التأكد أن الأمر من مجموعة المشرفين فقط
-    if update.effective_chat.id != ADMIN_GROUP_ID:
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
         return
     
     try:
@@ -88,12 +93,10 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🚫 تم حظر المستخدم {user_id}")
     except (IndexError, ValueError):
         await update.message.reply_text("❌ استخدم الأمر هكذا: /ban user_id")
-    except Exception as e:
-        await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
 
 # أمر إلغاء حظر المستخدم
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.id != ADMIN_GROUP_ID:
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
         return
     
     try:
@@ -106,18 +109,15 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # أمر إحصائيات
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.id != ADMIN_GROUP_ID:
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
         return
     
-    # عدد المستخدمين
     cursor.execute("SELECT COUNT(*) FROM users")
     users_count = cursor.fetchone()[0]
     
-    # عدد الرسائل
     cursor.execute("SELECT COUNT(*) FROM messages")
     msgs_count = cursor.fetchone()[0]
     
-    # عدد المحظورين
     cursor.execute("SELECT COUNT(*) FROM users WHERE banned = 1")
     banned_count = cursor.fetchone()[0]
     
@@ -138,5 +138,5 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 if __name__ == "__main__":
     print("✅ البوت يعمل...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
-    print("📱 البوت يقرأ فقط من المحادثات الخاصة")
+    print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
