@@ -42,6 +42,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text
+    
+    # ✅ منع إعادة إرسال الرسائل من مجموعة المشرفين
+    if update.message.chat.id == ADMIN_GROUP_ID:
+        return  # تجاهل رسائل المجموعة تماماً
 
     # تسجيل المستخدم إذا جديد
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
@@ -57,14 +61,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ الرسالة بشكل صحيح
+    # حفظ الرسالة في قاعدة البيانات
     cursor.execute(
         "INSERT INTO messages (user_id, text, date) VALUES (?, ?, ?)",
         (user_id, text, now)
     )
     conn.commit()
 
-    # إرسال الرسالة للجروب
+    # إرسال الرسالة للمجموعة
     msg = f"📩 رسالة جديدة مجهولة\n\n{text}\n\n🕒 {now}"
     await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=msg)
 
@@ -73,25 +77,65 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # أمر حظر المستخدم (خاص بالمشرفين)
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # التأكد أن الأمر من مجموعة المشرفين فقط
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
+    
     try:
         user_id = int(context.args[0])
         cursor.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (user_id,))
         conn.commit()
-        await update.message.reply_text("🚫 تم حظر المستخدم.")
+        await update.message.reply_text(f"🚫 تم حظر المستخدم {user_id}")
     except (IndexError, ValueError):
         await update.message.reply_text("❌ استخدم الأمر هكذا: /ban user_id")
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
 
-# ✅ التعديل الرئيسي هنا: استخدام Application.builder() بدلاً من ApplicationBuilder()
+# أمر إلغاء حظر المستخدم (اختياري - للأمان)
+async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    
+    try:
+        user_id = int(context.args[0])
+        cursor.execute("UPDATE users SET banned = 0 WHERE user_id = ?", (user_id,))
+        conn.commit()
+        await update.message.reply_text(f"✅ تم إلغاء حظر المستخدم {user_id}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("❌ استخدم الأمر هكذا: /unban user_id")
+
+# أمر إحصائيات بسيط
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    
+    # عدد المستخدمين
+    cursor.execute("SELECT COUNT(*) FROM users")
+    users_count = cursor.fetchone()[0]
+    
+    # عدد الرسائل
+    cursor.execute("SELECT COUNT(*) FROM messages")
+    msgs_count = cursor.fetchone()[0]
+    
+    # عدد المحظورين
+    cursor.execute("SELECT COUNT(*) FROM users WHERE banned = 1")
+    banned_count = cursor.fetchone()[0]
+    
+    stats_msg = f"📊 إحصائيات البوت:\n\n👥 المستخدمين: {users_count}\n📨 الرسائل: {msgs_count}\n🚫 المحظورين: {banned_count}"
+    await update.message.reply_text(stats_msg)
+
+# بناء التطبيق
 app = Application.builder().token(TOKEN).build()
 
 # إضافة المعالجات
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ban", ban))
+app.add_handler(CommandHandler("unban", unban))
+app.add_handler(CommandHandler("stats", stats))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # تشغيل البوت
 if __name__ == "__main__":
     print("✅ البوت يعمل...")
+    print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
