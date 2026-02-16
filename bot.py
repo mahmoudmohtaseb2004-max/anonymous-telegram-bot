@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS messages (
     user_id INTEGER,
     text TEXT,
     date TEXT,
-    group_message_id INTEGER  -- لتخزين ID الرسالة في المجموعة
+    group_message_id INTEGER
 )
 """)
 conn.commit()
@@ -51,11 +51,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user.username
     first_name = user.first_name
 
-    # تسجيل المستخدم إذا جديد
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-    # التحقق من الحظر
     cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
     result = cursor.fetchone()
     
@@ -89,18 +87,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # التعامل مع الردود من المجموعة
 async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # التأكد أن الرسالة من مجموعة المشرفين
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     
-    # التأكد أنها رد على رسالة
     if not update.message.reply_to_message:
         return
     
-    # جلب ID الرسالة الأصلية في المجموعة
     replied_message_id = update.message.reply_to_message.message_id
     
-    # البحث عن المستخدم صاحب الرسالة
     cursor.execute("SELECT user_id FROM messages WHERE group_message_id = ?", (replied_message_id,))
     result = cursor.fetchone()
     
@@ -112,11 +106,10 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_msg = f"📨 رد من الإدارة:\n\n{reply_text}"
         await context.bot.send_message(chat_id=user_id, text=reply_msg)
         
-        # تأكيد للمشرف
-        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
+        # ❌ تم حذف رسالة التأكيد اللي كانت تروح لك في الخاص
         
-        # إشعار للمالك
-        await context.bot.send_message(chat_id=OWNER_ID, text=f"✅ تم الرد على المستخدم {user_id}")
+        # تأكيد للمشرف فقط (في المجموعة)
+        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
     else:
         await update.message.reply_text("❌ لم أجد المستخدم لهذه الرسالة")
 
@@ -176,7 +169,7 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatTyp
 
 # تشغيل البوت
 if __name__ == "__main__":
-    print("✅ البوت يعمل مع خاصية الرد باللمس...")
+    print("✅ البوت يعمل...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
