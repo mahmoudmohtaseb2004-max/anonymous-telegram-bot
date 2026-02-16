@@ -8,8 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # المتغيرات السرية من Railway
 TOKEN = os.getenv("TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
-# 👇 معرفك الشخصي (بدون سالب)
-OWNER_ID = 6888898698  # معرفك الشخصي
+OWNER_ID = 6888898698
 
 # تهيئة السجلات
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +30,8 @@ CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     text TEXT,
-    date TEXT
+    date TEXT,
+    group_message_id INTEGER  -- لتخزين ID الرسالة في المجموعة
 )
 """)
 conn.commit()
@@ -40,14 +40,16 @@ conn.commit()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 أرسل رسالتك بشكل مجهول الآن.")
 
-# التعامل مع الرسائل المجهولة - بس من الخاص
+# التعامل مع الرسائل المجهولة
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # فقط الرسائل الخاصة
     if update.message.chat.type != "private":
         return
 
     user_id = update.message.from_user.id
     text = update.message.text
+    user = update.message.from_user
+    username = user.username
+    first_name = user.first_name
 
     # تسجيل المستخدم إذا جديد
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
@@ -63,25 +65,62 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ الرسالة في قاعدة البيانات
+    # إرسال الرسالة للمجموعة
+    group_msg = f"📩 رسالة جديدة مجهولة\n\n{text}\n\n🕒 {now}"
+    sent_message = await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=group_msg)
+    
+    # حفظ الرسالة مع ID الرسالة في المجموعة
     cursor.execute(
-        "INSERT INTO messages (user_id, text, date) VALUES (?, ?, ?)",
-        (user_id, text, now)
+        "INSERT INTO messages (user_id, text, date, group_message_id) VALUES (?, ?, ?, ?)",
+        (user_id, text, now, sent_message.message_id)
     )
     conn.commit()
-
-    # ✅ رسالة للمجموعة (مجهولة)
-    group_msg = f"📩 رسالة جديدة مجهولة\n\n{text}\n\n🕒 {now}"
-    await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=group_msg)
     
-    # ✅ رسالة للمالك (مع user_id) - تروح لخاصك
-    owner_msg = f"📩 رسالة جديدة\n👤 user_id: {user_id}\n💬 {text}\n🕒 {now}"
+    # رسالة للمالك (خاص)
+    if username:
+        owner_msg = f"📩 رسالة جديدة من @{username}\n💬 {text}\n🕒 {now}"
+    else:
+        owner_msg = f"📩 رسالة جديدة من {first_name} (ID: {user_id})\n💬 {text}\n🕒 {now}"
+    
     await context.bot.send_message(chat_id=OWNER_ID, text=owner_msg)
 
     # الرد على المرسل
     await update.message.reply_text("✅ تم إرسال رسالتك بنجاح.")
 
-# أمر حظر المستخدم (للمشرفين والمالك)
+# التعامل مع الردود من المجموعة
+async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # التأكد أن الرسالة من مجموعة المشرفين
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    
+    # التأكد أنها رد على رسالة
+    if not update.message.reply_to_message:
+        return
+    
+    # جلب ID الرسالة الأصلية في المجموعة
+    replied_message_id = update.message.reply_to_message.message_id
+    
+    # البحث عن المستخدم صاحب الرسالة
+    cursor.execute("SELECT user_id FROM messages WHERE group_message_id = ?", (replied_message_id,))
+    result = cursor.fetchone()
+    
+    if result:
+        user_id = result[0]
+        reply_text = update.message.text
+        
+        # إرسال الرد للمستخدم
+        reply_msg = f"📨 رد من الإدارة:\n\n{reply_text}"
+        await context.bot.send_message(chat_id=user_id, text=reply_msg)
+        
+        # تأكيد للمشرف
+        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
+        
+        # إشعار للمالك
+        await context.bot.send_message(chat_id=OWNER_ID, text=f"✅ تم الرد على المستخدم {user_id}")
+    else:
+        await update.message.reply_text("❌ لم أجد المستخدم لهذه الرسالة")
+
+# أمر حظر المستخدم
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
         return
@@ -132,11 +171,12 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ban", ban))
 app.add_handler(CommandHandler("unban", unban))
 app.add_handler(CommandHandler("stats", stats))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Chat(ADMIN_GROUP_ID), handle_group_reply))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
 # تشغيل البوت
 if __name__ == "__main__":
-    print("✅ البوت يعمل...")
+    print("✅ البوت يعمل مع خاصية الرد باللمس...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
