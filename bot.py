@@ -3,7 +3,7 @@ import sqlite3
 import os
 from datetime import datetime
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # المتغيرات السرية من Railway
 TOKEN = os.getenv("TOKEN")
@@ -49,9 +49,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # التحقق من الحظر
     cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
-    banned = cursor.fetchone()[0]
-
-    if banned == 1:
+    result = cursor.fetchone()
+    
+    if result and result[0] == 1:
         await update.message.reply_text("🚫 تم حظرك من استخدام البوت.")
         return
 
@@ -80,15 +80,18 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (user_id,))
         conn.commit()
         await update.message.reply_text("🚫 تم حظر المستخدم.")
-    except:
+    except (IndexError, ValueError):
         await update.message.reply_text("❌ استخدم الأمر هكذا: /ban user_id")
 
-# ⚡ الإصلاح الأساسي: تعيين التطبيق بالـ '='
-app = ApplicationBuilder().token(TOKEN).build()
+# ✅ التعديل الرئيسي هنا: استخدام Application.builder() بدلاً من ApplicationBuilder()
+app = Application.builder().token(TOKEN).build()
 
+# إضافة المعالجات
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ban", ban))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # تشغيل البوت
-app.run_polling()
+if __name__ == "__main__":
+    print("✅ البوت يعمل...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
