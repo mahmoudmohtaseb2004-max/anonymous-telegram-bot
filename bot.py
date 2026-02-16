@@ -38,14 +38,14 @@ conn.commit()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 أرسل رسالتك بشكل مجهول الآن.")
 
-# التعامل مع الرسائل المجهولة
+# التعامل مع الرسائل المجهولة - بس من الخاص
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ✅ الحل النهائي: فقط الرسائل الخاصة هي اللي تمر
+    if update.message.chat.type != "private":
+        return  # أي رسالة من مجموعة (بما فيها مجموعة المشرفين) يتم تجاهلها تماماً
+
     user_id = update.message.from_user.id
     text = update.message.text
-    
-    # ✅ منع إعادة إرسال الرسائل من مجموعة المشرفين
-    if update.message.chat.id == ADMIN_GROUP_ID:
-        return  # تجاهل رسائل المجموعة تماماً
 
     # تسجيل المستخدم إذا جديد
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
@@ -68,14 +68,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     conn.commit()
 
-    # إرسال الرسالة للمجموعة
+    # إرسال الرسالة لمجموعة المشرفين فقط
     msg = f"📩 رسالة جديدة مجهولة\n\n{text}\n\n🕒 {now}"
     await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=msg)
 
-    # الرد على المرسل
+    # الرد على المرسل في الخاص
     await update.message.reply_text("✅ تم إرسال رسالتك بنجاح.")
 
-# أمر حظر المستخدم (خاص بالمشرفين)
+# أمر حظر المستخدم (خاص بالمشرفين في مجموعة المشرفين)
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # التأكد أن الأمر من مجموعة المشرفين فقط
     if update.effective_chat.id != ADMIN_GROUP_ID:
@@ -91,7 +91,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
 
-# أمر إلغاء حظر المستخدم (اختياري - للأمان)
+# أمر إلغاء حظر المستخدم
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
@@ -104,7 +104,7 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (IndexError, ValueError):
         await update.message.reply_text("❌ استخدم الأمر هكذا: /unban user_id")
 
-# أمر إحصائيات بسيط
+# أمر إحصائيات
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
@@ -138,4 +138,5 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 if __name__ == "__main__":
     print("✅ البوت يعمل...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
+    print("📱 البوت يقرأ فقط من المحادثات الخاصة")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
