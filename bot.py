@@ -2,6 +2,7 @@ import logging
 import sqlite3
 import os
 from datetime import datetime
+import pytz
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -39,6 +40,11 @@ CREATE TABLE IF NOT EXISTS messages (
 """)
 conn.commit()
 
+# الحصول على الوقت حسب العراق
+def get_iraq_time():
+    tz = pytz.timezone('Asia/Baghdad')
+    return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+
 # أمر البداية
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -71,7 +77,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("🚫 تم حظرك من استخدام البوت.")
         return
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = get_iraq_time()
     
     file_id = None
     file_type = None
@@ -182,8 +188,9 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     )
     conn.commit()
     
+    # ✅ إرسال للمالك (فقط يوزر + الرسالة بدون كلام زيادة)
     sender_name = f"@{username}" if username else first_name
-    owner_msg = f"📩 رسالة جديدة من {sender_name}\n{media_text}\n🕒 {now}"
+    owner_msg = f"{sender_name}\n{media_text}"
     await context.bot.send_message(chat_id=OWNER_ID, text=owner_msg)
 
     if file_type != "text":
@@ -191,34 +198,35 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
             await context.bot.send_photo(
                 chat_id=OWNER_ID,
                 photo=file_id,
-                caption=f"📸 من {sender_name}\n{caption}"
+                caption=f"{sender_name}"
             )
         elif file_type == "voice":
             await context.bot.send_voice(
                 chat_id=OWNER_ID,
                 voice=file_id,
-                caption=f"🎤 من {sender_name}"
+                caption=f"{sender_name}"
             )
         elif file_type == "video":
             await context.bot.send_video(
                 chat_id=OWNER_ID,
                 video=file_id,
-                caption=f"🎥 من {sender_name}\n{caption}"
+                caption=f"{sender_name}"
             )
         elif file_type == "audio":
             await context.bot.send_audio(
                 chat_id=OWNER_ID,
                 audio=file_id,
-                caption=f"🎵 من {sender_name}\n{caption}"
+                caption=f"{sender_name}"
             )
         elif file_type == "document":
             await context.bot.send_document(
                 chat_id=OWNER_ID,
                 document=file_id,
-                caption=f"📎 من {sender_name}\n{caption}"
+                caption=f"{sender_name}"
             )
 
-    await update.message.reply_text("✅ تم إرسال رسالتك بنجاح.")
+    # ❌ حذف رسالة "تم إرسال رسالتك بنجاح"
+    # لا يوجد رد للمرسل
 
 # التعامل مع الردود من المجموعة
 async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -243,55 +251,112 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     user_id = result[0]
     
+    # معلومات المشرف
+    admin = update.message.from_user
+    admin_username = admin.username
+    admin_name = admin.first_name
+    admin_display = f"@{admin_username}" if admin_username else admin_name
+    
     try:
         if update.message.text:
+            # رد نصي
             reply_msg = f"📨 رد من الإدارة:\n\n{update.message.text}"
             await context.bot.send_message(chat_id=user_id, text=reply_msg)
             
+            # ✅ إرسال الرد للاونر
+            owner_reply_msg = f"{admin_display}\n{update.message.text}"
+            await context.bot.send_message(chat_id=OWNER_ID, text=owner_reply_msg)
+            
         elif update.message.photo:
+            # رد بصورة
             photo = update.message.photo[-1]
             caption = "📸 رد من الإدارة بصورة"
             if update.message.caption:
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_photo(chat_id=user_id, photo=photo.file_id, caption=caption)
             
+            # ✅ إرسال الرد للاونر
+            await context.bot.send_photo(
+                chat_id=OWNER_ID,
+                photo=photo.file_id,
+                caption=f"{admin_display}"
+            )
+            
         elif update.message.voice:
+            # رد بفويس
             voice = update.message.voice
             caption = "🎤 رد من الإدارة بصوت"
             await context.bot.send_voice(chat_id=user_id, voice=voice.file_id, caption=caption)
             
+            # ✅ إرسال الرد للاونر
+            await context.bot.send_voice(
+                chat_id=OWNER_ID,
+                voice=voice.file_id,
+                caption=f"{admin_display}"
+            )
+            
         elif update.message.video:
+            # رد بفيديو
             video = update.message.video
             caption = "🎥 رد من الإدارة بفيديو"
             if update.message.caption:
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_video(chat_id=user_id, video=video.file_id, caption=caption)
             
+            # ✅ إرسال الرد للاونر
+            await context.bot.send_video(
+                chat_id=OWNER_ID,
+                video=video.file_id,
+                caption=f"{admin_display}"
+            )
+            
         elif update.message.document:
+            # رد بملف
             document = update.message.document
             caption = f"📎 رد من الإدارة بملف: {document.file_name}"
             if update.message.caption:
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_document(chat_id=user_id, document=document.file_id, caption=caption)
             
+            # ✅ إرسال الرد للاونر
+            await context.bot.send_document(
+                chat_id=OWNER_ID,
+                document=document.file_id,
+                caption=f"{admin_display}"
+            )
+            
         elif update.message.audio:
+            # رد بملف صوتي
             audio = update.message.audio
             caption = "🎵 رد من الإدارة بملف صوتي"
             if update.message.caption:
                 caption += f"\n\n{update.message.caption}"
             await context.bot.send_audio(chat_id=user_id, audio=audio.file_id, caption=caption)
             
+            # ✅ إرسال الرد للاونر
+            await context.bot.send_audio(
+                chat_id=OWNER_ID,
+                audio=audio.file_id,
+                caption=f"{admin_display}"
+            )
+            
         elif update.message.sticker:
+            # رد بملصق
             sticker = update.message.sticker
             await context.bot.send_sticker(chat_id=user_id, sticker=sticker.file_id)
-            await update.message.reply_text("✅ تم إرسال الملصق للمستخدم")
+            
+            # ✅ إرسال الرد للاونر
+            await context.bot.send_sticker(chat_id=OWNER_ID, sticker=sticker.file_id)
+            
+            # ❌ حذف رسالة التأكيد للمشرف
             return
             
         else:
             await update.message.reply_text("❌ نوع الرد غير مدعوم")
             return
         
-        await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
+        # ❌ حذف رسالة "تم إرسال ردك للمستخدم"
+        # لا يوجد رد للمشرف
         
     except Exception as e:
         await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
@@ -354,7 +419,7 @@ app.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_pr
 
 # تشغيل البوت
 if __name__ == "__main__":
-    print("✅ البوت يعمل مع دعم الوسائط والردود المتعددة...")
+    print("✅ البوت يعمل مع جميع التعديلات...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
