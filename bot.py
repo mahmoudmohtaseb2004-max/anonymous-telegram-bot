@@ -61,11 +61,9 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     username = user.username
     first_name = user.first_name
 
-    # تسجيل المستخدم إذا جديد
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-    # التحقق من الحظر
     cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
     result = cursor.fetchone()
     
@@ -75,21 +73,17 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # متغيرات للرسالة
     file_id = None
     file_type = None
     caption = None
     media_text = ""
     
-    # تحديد نوع الرسالة
     if update.message.text:
-        # رسالة نصية
         media_text = update.message.text
         file_type = "text"
         caption = None
         
     elif update.message.photo:
-        # صورة
         photo = update.message.photo[-1]
         file_id = photo.file_id
         file_type = "photo"
@@ -97,7 +91,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         media_text = f"[صورة] {caption}"
         
     elif update.message.voice:
-        # فويس
         voice = update.message.voice
         file_id = voice.file_id
         file_type = "voice"
@@ -105,7 +98,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         media_text = "[تسجيل صوتي]"
         
     elif update.message.video:
-        # فيديو
         video = update.message.video
         file_id = video.file_id
         file_type = "video"
@@ -113,7 +105,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         media_text = f"[فيديو] {caption}"
         
     elif update.message.audio:
-        # ملف صوتي
         audio = update.message.audio
         file_id = audio.file_id
         file_type = "audio"
@@ -121,7 +112,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         media_text = f"[ملف صوتي] {caption}"
         
     elif update.message.document:
-        # ملف
         document = update.message.document
         file_id = document.file_id
         file_type = "document"
@@ -132,7 +122,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ نوع الرسالة غير مدعوم.")
         return
 
-    # حفظ الرسالة في قاعدة البيانات
     cursor.execute(
         """INSERT INTO messages 
            (user_id, text, caption, file_id, file_type, date) 
@@ -143,7 +132,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     
     message_db_id = cursor.lastrowid
 
-    # إرسال للمجموعة (حسب نوع الوسائط)
     if file_type == "text":
         group_msg = f"📩 رسالة جديدة مجهولة\n\n{media_text}\n\n🕒 {now}"
         sent_message = await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=group_msg)
@@ -188,19 +176,16 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
             caption=group_caption
         )
     
-    # تحديث group_message_id في قاعدة البيانات
     cursor.execute(
         "UPDATE messages SET group_message_id = ? WHERE id = ?",
         (sent_message.message_id, message_db_id)
     )
     conn.commit()
     
-    # إرسال للمالك (خاص بدون user_id)
     sender_name = f"@{username}" if username else first_name
     owner_msg = f"📩 رسالة جديدة من {sender_name}\n{media_text}\n🕒 {now}"
     await context.bot.send_message(chat_id=OWNER_ID, text=owner_msg)
 
-    # إذا كانت وسائط، أرسل نسخة للمالك
     if file_type != "text":
         if file_type == "photo":
             await context.bot.send_photo(
@@ -233,21 +218,22 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
                 caption=f"📎 من {sender_name}\n{caption}"
             )
 
-    # الرد على المرسل
     await update.message.reply_text("✅ تم إرسال رسالتك بنجاح.")
 
-# التعامل مع الردود من المجموعة (بجميع أنواعها)
+# التعامل مع الردود من المجموعة
 async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # منع البوت من معالجة رسائله هو
+    if update.message.from_user.id == context.bot.id:
+        return
+    
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     
     if not update.message.reply_to_message:
         return
     
-    # جلب ID الرسالة الأصلية في المجموعة
     replied_message_id = update.message.reply_to_message.message_id
     
-    # البحث عن المستخدم صاحب الرسالة
     cursor.execute("SELECT user_id FROM messages WHERE group_message_id = ?", (replied_message_id,))
     result = cursor.fetchone()
     
@@ -257,15 +243,12 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     user_id = result[0]
     
-    # تحديد نوع رد المشرف
     try:
         if update.message.text:
-            # رد نصي
             reply_msg = f"📨 رد من الإدارة:\n\n{update.message.text}"
             await context.bot.send_message(chat_id=user_id, text=reply_msg)
             
         elif update.message.photo:
-            # رد بصورة
             photo = update.message.photo[-1]
             caption = "📸 رد من الإدارة بصورة"
             if update.message.caption:
@@ -273,13 +256,11 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await context.bot.send_photo(chat_id=user_id, photo=photo.file_id, caption=caption)
             
         elif update.message.voice:
-            # رد بفويس
             voice = update.message.voice
             caption = "🎤 رد من الإدارة بصوت"
             await context.bot.send_voice(chat_id=user_id, voice=voice.file_id, caption=caption)
             
         elif update.message.video:
-            # رد بفيديو
             video = update.message.video
             caption = "🎥 رد من الإدارة بفيديو"
             if update.message.caption:
@@ -287,7 +268,6 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await context.bot.send_video(chat_id=user_id, video=video.file_id, caption=caption)
             
         elif update.message.document:
-            # رد بملف
             document = update.message.document
             caption = f"📎 رد من الإدارة بملف: {document.file_name}"
             if update.message.caption:
@@ -295,7 +275,6 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await context.bot.send_document(chat_id=user_id, document=document.file_id, caption=caption)
             
         elif update.message.audio:
-            # رد بملف صوتي
             audio = update.message.audio
             caption = "🎵 رد من الإدارة بملف صوتي"
             if update.message.caption:
@@ -303,7 +282,6 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await context.bot.send_audio(chat_id=user_id, audio=audio.file_id, caption=caption)
             
         elif update.message.sticker:
-            # رد بملصق
             sticker = update.message.sticker
             await context.bot.send_sticker(chat_id=user_id, sticker=sticker.file_id)
             await update.message.reply_text("✅ تم إرسال الملصق للمستخدم")
@@ -313,15 +291,7 @@ async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("❌ نوع الرد غير مدعوم")
             return
         
-        # تأكيد للمشرف
         await update.message.reply_text("✅ تم إرسال ردك للمستخدم")
-        
-        # إشعار للمالك (اختياري)
-        sender_name = update.message.from_user.username or update.message.from_user.first_name
-        await context.bot.send_message(
-            chat_id=OWNER_ID, 
-            text=f"✅ {sender_name} رد على المستخدم {user_id}"
-        )
         
     except Exception as e:
         await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
@@ -379,7 +349,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ban", ban))
 app.add_handler(CommandHandler("unban", unban))
 app.add_handler(CommandHandler("stats", stats))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Chat(ADMIN_GROUP_ID) & filters.REPLY, handle_group_reply))
+app.add_handler(MessageHandler(filters.ALL & filters.Chat(ADMIN_GROUP_ID) & filters.REPLY, handle_group_reply))
 app.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_private_message))
 
 # تشغيل البوت
