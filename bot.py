@@ -417,10 +417,123 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats_msg = f"📊 إحصائيات البوت:\n\n👥 المستخدمين: {users_count}\n📨 الرسائل: {msgs_count}\n🚫 المحظورين: {banned_count}"
     await update.message.reply_text(stats_msg)
 
+# أمر البث للمستخدمين
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # التحقق من أن الأمر من المجموعة المسموحة أو من المالك
+    if update.effective_chat.id != ADMIN_GROUP_ID and update.effective_chat.id != OWNER_ID:
+        return
+    
+    # التحقق من وجود نص للبث
+    if not context.args and not update.message.reply_to_message:
+        await update.message.reply_text("❌ استخدم الأمر هكذا:\n/bd نص الرسالة\nأو قم بالرد على رسالة بالبث")
+        return
+    
+    # الحصول على نص البث
+    broadcast_text = ""
+    if context.args:
+        broadcast_text = " ".join(context.args)
+    elif update.message.reply_to_message:
+        if update.message.reply_to_message.text:
+            broadcast_text = update.message.reply_to_message.text
+        elif update.message.reply_to_message.caption:
+            broadcast_text = update.message.reply_to_message.caption
+        else:
+            await update.message.reply_text("❌ لا يمكن بث هذا النوع من الرسائل")
+            return
+    
+    # إرسال رسالة بدء البث
+    status_msg = await update.message.reply_text("🔄 جاري بدء البث...")
+    
+    # جلب جميع المستخدمين من قاعدة البيانات
+    cursor.execute("SELECT user_id FROM users WHERE banned = 0")
+    users = cursor.fetchall()
+    
+    if not users:
+        await status_msg.edit_text("❌ لا يوجد مستخدمين للبث")
+        return
+    
+    success_count = 0
+    fail_count = 0
+    
+    # إرسال البث لكل مستخدم
+    for user in users:
+        user_id = user[0]
+        try:
+            # إذا كان هناك وسائط في الرسالة المردود عليها
+            if update.message.reply_to_message:
+                replied = update.message.reply_to_message
+                
+                # بث الصور
+                if replied.photo:
+                    photo = replied.photo[-1]
+                    await context.bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo.file_id,
+                        caption=broadcast_text if broadcast_text else None
+                    )
+                
+                # بث الفيديو
+                elif replied.video:
+                    await context.bot.send_video(
+                        chat_id=user_id,
+                        video=replied.video.file_id,
+                        caption=broadcast_text
+                    )
+                
+                # بث الصوت
+                elif replied.voice:
+                    await context.bot.send_voice(
+                        chat_id=user_id,
+                        voice=replied.voice.file_id,
+                        caption=broadcast_text
+                    )
+                
+                # بث الملفات
+                elif replied.document:
+                    await context.bot.send_document(
+                        chat_id=user_id,
+                        document=replied.document.file_id,
+                        caption=broadcast_text
+                    )
+                
+                # بث الملصقات
+                elif replied.sticker:
+                    await context.bot.send_sticker(
+                        chat_id=user_id,
+                        sticker=replied.sticker.file_id
+                    )
+                
+                # بث النصوص
+                else:
+                    await context.bot.send_message(chat_id=user_id, text=broadcast_text)
+            
+            # إذا كان البث نص عادي
+            else:
+                await context.bot.send_message(chat_id=user_id, text=broadcast_text)
+            
+            success_count += 1
+            
+        except Exception as e:
+            fail_count += 1
+            logging.error(f"فشل إرسال البث للمستخدم {user_id}: {str(e)}")
+    
+    # إرسال تقرير البث
+    report = f"✅ تم البث بنجاح!\n\n📊 الإحصائيات:\n✓ تم الإرسال لـ: {success_count} مستخدم\n✗ فشل الإرسال لـ: {fail_count} مستخدم"
+    
+    await status_msg.edit_text(report)
+    
+    # إرسال التقرير للمالك أيضاً
+    if update.effective_chat.id != OWNER_ID:
+        await context.bot.send_message(
+            chat_id=OWNER_ID,
+            text=f"📢 تم تنفيذ أمر بث بواسطة {update.effective_user.first_name}\n\n{report}"
+        )
+
 # بناء التطبيق
 app = Application.builder().token(TOKEN).build()
 
 # إضافة المعالجات
+app.add_handler(CommandHandler("bd", broadcast))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ban", ban))
 app.add_handler(CommandHandler("unban", unban))
@@ -430,7 +543,7 @@ app.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_pr
 
 # تشغيل البوت
 if __name__ == "__main__":
-    print("✅ البوت يعمل مع دعم الستيكرات...")
+    print("✅ البوت يعمل مع دعم الستيكرات وأمر البث...")
     print(f"📢 مجموعة المشرفين: {ADMIN_GROUP_ID}")
     print(f"👑 معرف المالك: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
